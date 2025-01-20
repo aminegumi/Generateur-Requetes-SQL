@@ -1,0 +1,128 @@
+options {
+    STATIC = false;
+    IGNORE_CASE = true;
+}
+
+PARSER_BEGIN(SQLGenerator)
+package compilation_project;
+
+import java.io.*;
+import java.util.*;
+
+public class SQLGenerator {
+    private List<TableDefinition> tables = new ArrayList<>();
+    
+    public static void main(String args[]) throws ParseException {
+        SQLGenerator parser = new SQLGenerator(System.in);
+        parser.Parse();
+    }
+    
+    public String getGeneratedSQL() {
+        StringBuilder sql = new StringBuilder();
+        for (TableDefinition table : tables) {
+            sql.append(table.toSQL()).append("\n\n");
+        }
+        return sql.toString();
+    }
+    
+    public List<TableDefinition> getTables() {
+        return tables;
+    }
+}
+
+PARSER_END(SQLGenerator)
+
+SKIP : {
+    " "
+    | "\t"
+    | "\n"
+    | "\r"
+}
+
+// Define tokens in order of specificity
+TOKEN : {
+    < TABLE: "table" >
+    | < COLON: ":" >
+    | < LPAREN: "(" >
+    | < RPAREN: ")" >
+    | < COMMA: "," >
+    | < DASH: "-" >
+    // Type keywords must come before IDENTIFIER
+    | < INTEGER_TYPE: "entier" >
+    | < TEXT_TYPE: "texte" >
+    | < DATE_TYPE: "date" >
+    // Constraint keywords
+    | < PRIMARY_KEY: ("clé" | "cle") (" ")* "primaire" >
+    | < AUTO: "auto" >
+    | < REQUIRED: "requis" >
+    | < UNIQUE: "unique" >
+    | < DEFAULT_VALUE: "par" (" ")* "défaut" >
+    | < REFERENCE: "référence" | "reference" >
+    // IDENTIFIER must come last to avoid conflicts
+    | < IDENTIFIER: ["a"-"z","A"-"Z","_"] (["a"-"z","A"-"Z","0"-"9","_","." ])* >
+}
+
+void Parse() : 
+{}
+{
+    (TableDefinition())*
+    <EOF>
+}
+
+void TableDefinition() : 
+{
+    Token tableName;
+    TableDefinition table;
+}
+{
+    <TABLE> tableName=<IDENTIFIER> <COLON>
+    {
+        table = new TableDefinition(tableName.image);
+        tables.add(table);
+    }
+    (ColumnDefinition(table))*
+}
+
+void ColumnDefinition(TableDefinition table) : 
+{
+    Token columnName;
+    List<String> constraints = new ArrayList<>();
+    String type = "";
+}
+{
+    <DASH> columnName=<IDENTIFIER> <LPAREN> 
+    type=Type() 
+    (<COMMA> Constraint(constraints))*
+    <RPAREN>
+    {
+        table.addColumn(new ColumnDefinition(columnName.image, type, constraints));
+    }
+}
+
+String Type() : 
+{
+    Token t;
+}
+{
+    (
+        t=<INTEGER_TYPE> { return "INT"; }
+        | t=<TEXT_TYPE> { return "VARCHAR(255)"; }
+        | t=<DATE_TYPE> { return "DATE"; }
+    )
+}
+
+void Constraint(List<String> constraints) : 
+{
+    Token t;
+}
+{
+    (
+        <PRIMARY_KEY> { constraints.add("PRIMARY KEY"); }
+        | <AUTO> { constraints.add("AUTO_INCREMENT"); }
+        | <REQUIRED> { constraints.add("NOT NULL"); }
+        | <UNIQUE> { constraints.add("UNIQUE"); }
+        | <DEFAULT_VALUE> { constraints.add("DEFAULT CURRENT_TIMESTAMP"); }
+        | <REFERENCE> <COLON> t=<IDENTIFIER> 
+        { constraints.add("REFERENCES " + t.image + "(id)"); }
+    )
+}
